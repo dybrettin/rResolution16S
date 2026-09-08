@@ -35,7 +35,7 @@ if (!requireNamespace("remotes", quietly = TRUE)) {
 remotes::install_github("dybrettin/MarkerCompass", quiet = TRUE)
 ```
 
-*(Note: For optimal alignment speed, ensure MAFFT is installed on your system and accessible via your system PATH. The package will automatically fall back to the native `DECIPHER` alignment engine if MAFFT is unavailable).*
+*(Note: For optimal alignment speed with large datasets (large genera, many genera, or increasing taxonomic level during analysis), ensure MAFFT is installed on your system and accessible via your system PATH. The package will automatically fall back to the native `DECIPHER` alignment engine if MAFFT is unavailable).*
 
 ---
 
@@ -43,34 +43,30 @@ remotes::install_github("dybrettin/MarkerCompass", quiet = TRUE)
 
 Once installed, running the pipeline requires only a single function call: `run_marker_pipeline()`.
 
-Here is a basic usage example targeting the 16S rRNA gene for two specific genera. By default, this will run the built-in library of universal 16S primers.
+Here is the complete suite of options available to configure your pipeline run. This example targets the 16S rRNA gene for the *Pantoea* genus using generic file paths:
 
 ```R
 library(MarkerCompass)
 
 run_marker_pipeline(
-  target_genera = c("Gilliamella", "Snodgrassella"),
-  output_dir = "MarkerCompass_Results",   # Where your output folders will be saved
-  db_dir = "Database_Files",              # Where NCBI/LPSN masters are cached
-  target_gene = "16S",                    # The gene to extract
-  feature_type = "rRNA",                  # The feature type to filter by in the GFF
-  only_reference = TRUE,                  # Recommended to keep TRUE, avoids wrongly classified genomes
-  max_contigs = 100,                      # Lower value increases quality of genomes in general - only use if 'only_references = FALSE', reference genomes alaways kept
-  enable_lpsn_check = TRUE,               # Validates against LPSN, recommended to keep TRUE, clade based resolution is name based so synonym names ruin results
-  lpsn_db_path = "Database_Files/lpsn_gss.csv"
-  refseq_max_age = Inf,                   # Age of refseq file downloaded, default 30 days, Inf will use file no matter the age
-  keep_genomes = FALSE                    # Space saving option to automatically delete (if FALSE) .fasta and .gff files aftre gene extraction
-)
-```
-
-**Running Custom Primers:**
-If you are running a different marker gene (e.g., *groL*) or want to test your own primers, simply pass a `.csv` file to the `custom_primers` argument:
-```R
-run_marker_pipeline(
-  target_genera = "Neisseria",
-  target_gene = "groL",
-  feature_type = "gene",
-  custom_primers = "path/to/my_groL_primers.csv"
+  target_genera = c("Pantoea"),                  # Required. A character vector of target genera or path to a .csv list
+  output_dir = "path/to/output_directory",       # Required. Path to the folder where results should be saved
+  db_dir = "path/to/database_directory",         # Required. Path to the directory where Refseq master and LPSN databases are cached. Refseq database will automatically download to this directory if not found or older then refseq_max_age parameter setting
+  mafft_path = NULL,                             # Path to local MAFFT executable (NULL defaults to DECIPHER alignment). Good for analysis with many sequences
+  target_gene = "16S",                           # Required. The specific gene text to search for in the .gff file
+  feature_type = "rRNA",                         # Required. The feature category to filter by (e.g., "rRNA", "CDS")
+  custom_primers = NULL,                         # Path to a .csv containing custom primers (NULL uses built-in 16S set)
+  only_reference = TRUE,                         # Recommendation = TRUE. Restricts the pipeline to only use RefSeq Reference or Representative genomes
+  dereplicate_strains = TRUE,                    # Keeps only the highest-quality genome per strain label to prevent clonal bias and removes identical copies of genes, 16S for example is multi copy
+  remove_unclassified = TRUE,                    # Automatically drops strains with ambiguous names (e.g., "sp.", "uncultured")
+  enable_lpsn_check = TRUE,                      # Recommended = TRUE. Validates species names against the LPSN database to flag synonyms which usually ruins monophyletic calculations.
+  lpsn_db_path = "path/to/lpsn_gss.csv",         # Path to your local LPSN database CSV file. See "Under the Hood" section for download link to database
+  max_contigs = 100,                             # Maximum allowed contigs for draft genomes (RefSeq references bypass this)
+  max_tax_level = "Genus",                       # Highest taxonomic tier to assess for clade resolution. Default is Genus
+  n_threats = 50,                                # Number of closest outgroup genera to pull full species data for alignment
+  max_scout_genera = Inf,                        # Maximum outgroup genera to fetch during the phylogenetic scout phase
+  refseq_max_age = 50,                          # Maximum age (in days) of local RefSeq summary before forcing a fresh download
+  keep_genomes = FALSE                           # If FALSE, acts as a space saver by deleting .fna and .gff files after extraction but not the Genome Cache generated when going up to higher taxonomic levels, delete manually if you want to remove those files.
 )
 ```
 
@@ -195,6 +191,11 @@ When a multi-genus pipeline run completes, `MarkerCompass` generates a centraliz
 #### Audit & Quality Control Reports
 *   **`extraction_status_report.csv`**: A verification log cataloging the exact number of targeted marker loci successfully isolated from each individual strain.
 *   **`QC_Contig_Report.csv`**: An infrastructure quality control log detailing total contig counts per strain assembly, paired with an explicit `Yes/No` designation indicating if the assembly met your strict structural limits.
+*   **`LPSN_Invalid_Species_Report.csv`**: A report tracking all genomes that were dropped or flagged because their taxonomic names were identified as outdated, synonymous, or invalidly published by the LPSN database.
+*   **`genome_metadata_refseq_enriched.csv`**: A detailed metadata ledger of all processed genomes, enriched with their full taxonomy, assembly statistics, and RefSeq validation categories.
+*   **`[Taxonomic_Level]_[Target]_Cophenetic_Threats.csv`** *(e.g., `Family_Pantoea_Cophenetic_Threats.csv`)*: A log identifying the closest outgroup clades (threats) calculated during the phylogenetic scout phase to thoroughly test primer specificity against related taxa.
+
+*(Note: The `primer_mismatch_report_summary.csv` is compiled from individual logs and can be found under the Primary Outputs section).*
 
 #### Local Data Repositories
 *(Note: These asset folders are only retained if operating with `keep_genomes = TRUE`)*
